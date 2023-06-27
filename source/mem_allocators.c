@@ -1,10 +1,14 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <unistd.h>
 #include <pthread.h>
 
 #include "mem_allocators.h"
+
+
+static pthread_mutex_t alloc_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 typedef struct s_block
@@ -88,6 +92,8 @@ void *arthur_malloc(size_t size){
     s_block *block, last;
     size_t s = align8(size);
 
+    pthread_mutex_lock(&alloc_mutex);
+
     if(first_block){
         block = find_block(s);
         if(block){
@@ -108,7 +114,9 @@ void *arthur_malloc(size_t size){
         }
         // first_block = block;  // строчка наверно не нужна
     }
-    printf("it's being used custom malloc\n");
+    printf("it was used custom malloc\n");
+
+    pthread_mutex_unlock(&alloc_mutex);
 
     return ((void *)block) + SIZE_BLOCK;
 }
@@ -129,13 +137,17 @@ void *arthur_calloc(size_t number, size_t size){
 }
 
 int valid_address(void *p){  // если valid_flag равен 1, то указатель действительный
-    if(first_block){
-        if(p >= (void *)first_block && p < sbrk(0)){
+    if (first_block)
+    {
+        if (p >= (void *)first_block && p < sbrk(0))
+        {
             int flag = 1, valid_flag = 0;
             s_block *cur_block = first_block;
 
-            while(cur_block && (cur_block != first_block || flag)){
-                if(cur_block == p - SIZE_BLOCK){
+            while (cur_block && (cur_block != first_block || flag))
+            {
+                if (cur_block == p - SIZE_BLOCK)
+                {
                     valid_flag = 1;
                     break;
                 }
@@ -148,12 +160,14 @@ int valid_address(void *p){  // если valid_flag равен 1, то указ�
     return 0;
 }
 
-s_block *fusion(s_block *block){
-    if(block->next != block && block->next->free)
+s_block *fusion(s_block *block)
+{
+    if (block->next != block && block->next->free)
     {
         block->size += SIZE_BLOCK + block->next->size;
         block->next = block->next->next;
-        if(block->next){
+        if (block->next)
+        {
             block->next->prev = block;
         }
     }
@@ -161,30 +175,38 @@ s_block *fusion(s_block *block){
     return block;
 }
 
-void arthur_free(void *p){
+void arthur_free(void *p)
+{
     s_block *block;
-    if(valid_address(p)){
+
+    pthread_mutex_lock(&alloc_mutex);
+
+    if (valid_address(p))
+    {
         block = (s_block *)(p - SIZE_BLOCK);
         block->free = 1;
-        while(block->prev != block && block->prev->free){
+        while (block->prev != block && block->prev->free)
+        {
             block = fusion(block->prev);
         }
-        while(block->next != block && block->next->free){
+        while (block->next != block && block->next->free)
+        {
             block = fusion(block);  // скорее всего надо передать просто block, было block->next
         }
 
-        if(block != first_block && block->next == first_block)
+        if (block != first_block && block->next == first_block)
         {
             first_block->prev = block->prev;
             block->prev->next = first_block;
             sbrk(-SIZE_BLOCK - block->size);
         }
-        if(block == first_block && block->next == first_block)
+        if (block == first_block && block->next == first_block)
         {
             sbrk(-SIZE_BLOCK - block->size);
             first_block = NULL;
         }
     }
+    pthread_mutex_unlock(&alloc_mutex);
 }
 
 void copy_block(s_block *src, s_block *dst)
@@ -193,7 +215,8 @@ void copy_block(s_block *src, s_block *dst)
     size_t i;
     sdata = (size_t *)((char *)src + SIZE_BLOCK);
     ddata = (size_t *)((char *)dst + SIZE_BLOCK);
-    for(i = 0; (i * 8) < src->size && (i * 8) < dst->size; i++){
+    for (i = 0; (i * 8) < src->size && (i * 8) < dst->size; i++)
+    {
         ddata[i] = sdata[i];
     }
 }
@@ -202,22 +225,25 @@ void *arthur_realloc(void *p, size_t size){
     size_t s;
     s_block *block, *new_block;
 
-    if(!p){
+    if (!p)
+    {
         return arthur_malloc(size);
     }
 
-    if(valid_address(p))
+    if (valid_address(p))
     {
         s = align8(size);
         block = (s_block *)(p - SIZE_BLOCK);
-        if(block->size >= s){
-            if(block->size - s >= (SIZE_BLOCK + 8)){
+        if (block->size >= s)
+        {
+            if(block->size - s >= (SIZE_BLOCK + 8))
+            {
                 split_block(block, s);
             }  
         }
         else
         {
-            if(block->next != block && block->next->free && (block->size + SIZE_BLOCK + block->next->size) >= s)  // вероятно, что SIZE_BLOCK прибавлять не надо
+            if (block->next != block && block->next->free && (block->size + SIZE_BLOCK + block->next->size) >= s)  // вероятно, что SIZE_BLOCK прибавлять не надо
             {  
                 block = fusion(block);
                 if(block->size - s >= (SIZE_BLOCK + 8))
@@ -228,7 +254,8 @@ void *arthur_realloc(void *p, size_t size){
             else
             {
                 void *newp = arthur_malloc(s);
-                if(!newp){
+                if(!newp)
+                {
                     return NULL;
                 }
                 new_block = (s_block *)(newp - SIZE_BLOCK);

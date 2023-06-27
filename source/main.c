@@ -3,32 +3,28 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-#include "allocs.h"
+#include "mem_allocators.h"
 
-
-sem_t semaphore;
 
 const int n = 9; 
 void *pointer[9];
-static pthread_mutex_t output_file, printf_mut;
+static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void *make_blocks(void *argc)
 {
 	int i = *((int *)argc) % 3;
-	sem_wait(&semaphore);
-	pthread_mutex_lock(&printf_mut);
-	pointer[i * 3] = malloc(16);
-	pointer[i * 3 + 1] = malloc(1024);
-	pointer[i * 3 + 2] = malloc(4096);
+	pthread_mutex_lock(&mutex);
+	pointer[i * 3] = arthur_malloc(16);
+	pointer[i * 3 + 1] = arthur_malloc(1024);
+	pointer[i * 3 + 2] = arthur_malloc(4096);
 	printf("%p %p %p\n", pointer[i * 3], pointer[i * 3 + 1], pointer[i * 3 + 2]);
-	pthread_mutex_unlock(&printf_mut);
-	sem_post(&semaphore);
+	pthread_mutex_unlock(&mutex);
 }
 
 void *fill_blocks(void *argc)
 {
 	int i = *((int *)argc) % 3;
-	sem_wait(&semaphore);
+	pthread_mutex_lock(&mutex);
 
 	int **list = (int **)pointer;
 	for(int j = 0; j < 16 / sizeof(int); j++)
@@ -44,21 +40,20 @@ void *fill_blocks(void *argc)
 		list[i * 3 + 2][j] = i + 4;
 	}
 
-	sem_post(&semaphore);
+	pthread_mutex_unlock(&mutex);
 }
 
 void *output_info(void *argc) 
 {
 	int i = *((int *)argc) % 3;
 
-	pthread_mutex_lock(&output_file);
-	FILE *file = fopen("log.txt", "a");
+	pthread_mutex_lock(&mutex);
+	FILE *file = fopen("out.txt", "a");
 
-	sem_wait(&semaphore);
 	fprintf(file, "%p %p %p\n",  pointer[i * 3], pointer[i * 3 + 1], pointer[i * 3 + 2]);
 	fclose(file);
 
-	char file_name[9] = "log0.txt\0";
+	char file_name[9] = "out0.txt\0";
 	file_name[3] = i + 55; 
 	file = fopen(file_name, "w");
 
@@ -84,63 +79,69 @@ void *output_info(void *argc)
 
 	fclose(file);
 
-	free(pointer[i * 3]);
-	free(pointer[i * 3 + 1]);
-	free(pointer[i * 3 + 2]);
+	arthur_free(pointer[i * 3]);
+	arthur_free(pointer[i * 3 + 1]);
+	arthur_free(pointer[i * 3 + 2]);
     
-	pthread_mutex_unlock(&output_file);
-	sem_post(&semaphore);
+	pthread_mutex_unlock(&mutex);
 }
 
-// int test_result() {
+int test_result() {
 
-// 	int flag = 1;
+	int flag = 1;
 
-// 	FILE *file;
-// 	char* file_name[3] = {"log7.txt\0" , "log8.txt\0", "log9.txt\0"};
+	FILE *file;
+	char* file_name[3] = {"out7.txt\0" , "out8.txt\0", "out9.txt\0"};
 
-// 	int result;
+	int result;
 
-// 	for (int i = 0; (i < 3) && flag; i++) {
+	for (int i = 0; (i < 3) && flag; i++)
+	{
+		file = fopen(file_name[i], "r");
 
-// 		file = fopen(file_name[i], "r");
+		for (int j = 0; j < 16 / sizeof(int); j++)
+		{
+			fscanf(file, "%d", &result);
+			if (result != 4 + i) 
+			{
+				flag = 0;
+				break;
+			}
+		}
 
-// 		for(int j = 0; j < 16 / sizeof(int); j++){
-// 			fscanf(file, "%d", &result);
-// 			if (result != 4 + i) {
-// 				flag = 0;
-// 				break;
-// 			}
-// 		}
+		for (int j = 0; (j < 1024 / sizeof(int)) && flag; j++)
+		{
+			fscanf(file, "%d", &result);
+			if (result != 4 + i) 
+			{
+				flag = 0;
+				break;
+			}
+		}
 
-// 		for(int j = 0; (j < 1024 / sizeof(int)) && flag; j++){
-// 			fscanf(file, "%d", &result);
-// 			if (result != 4 + i) {
-// 				flag = 0;
-// 				break;
-// 			}
-// 		}
+		for (int j = 0; (j < 4096 / sizeof(int)) && flag; j++)
+		{
+			fscanf(file, "%d", &result);
+			if (result != 4 + i) 
+			{
+				flag = 0;
+				break;
+			}
+		}
+		fclose(file);
+	}
 
-// 		for(int j = 0; (j < 4096 / sizeof(int)) && flag; j++){
-// 			fscanf(file, "%d", &result);
-// 			if (result != 4 + i) {
-// 				flag = 0;
-// 				break;
-// 			}
-// 		}
+	if (flag) 
+	{
+		printf("\nTest passed\n");
+	} 
+	else 
+	{
+		printf("Test failed");
+	}
 
-// 		fclose(file);
-
-// 	}
-
-// 	if (flag) {
-// 		printf("\nTests passed\n");
-// 	} else {
-// 		printf("Tests failed");
-// 	}
-
-// 	return 0;
-// }
+	return 0;
+}
 
 int main()
 {
@@ -152,7 +153,7 @@ int main()
 		number[i] = i;
 	}
 
-	sem_init(&semaphore, 0, 1);
+    pthread_mutex_init(&mutex, NULL);
 
 	for (i = 0; i < n; i++) 
     {
@@ -177,7 +178,8 @@ int main()
 		pthread_join(threads[i], NULL);
 	}
 
-	// test_result();
+	test_result();
+    pthread_mutex_destroy(&mutex);
 
 	return 0;
 }
