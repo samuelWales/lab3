@@ -2,6 +2,7 @@
 #include <unistd.h>  // для sleep()
 #include <pthread.h>
 #include <semaphore.h>
+#include <time.h>
 
 #include "mem_allocators.h"
 
@@ -9,15 +10,21 @@
 const int n = 9; 
 void *pointer[9];
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+clock_t start, end;
 
 void *make_blocks(void *argc)
 {
 	int i = *((int *)argc) % 3;
 	pthread_mutex_lock(&mutex);
-	pointer[i * 3] = arthur_malloc(16);
-	pointer[i * 3 + 1] = arthur_malloc(1024);
-	pointer[i * 3 + 2] = arthur_malloc(4096);
+
+	start = clock();
+	pointer[i * 3] = custom_malloc(16);
+	pointer[i * 3 + 1] = custom_malloc(1024);
+	pointer[i * 3 + 2] = custom_malloc(4096);
+	end = clock();
 	printf("%p %p %p\n", pointer[i * 3], pointer[i * 3 + 1], pointer[i * 3 + 2]);
+	printf("Allocating required %ld milliseconds\n", (end - start));
+	
 	pthread_mutex_unlock(&mutex);
 }
 
@@ -26,6 +33,7 @@ void *fill_blocks(void *argc)
 	int i = *((int *)argc) % 3;
 	pthread_mutex_lock(&mutex);
 
+	start = clock();
 	int **list = (int **)pointer;
 	for(int j = 0; j < 16 / sizeof(int); j++)
     {
@@ -39,6 +47,8 @@ void *fill_blocks(void *argc)
     {
 		list[i * 3 + 2][j] = i + 4;
 	}
+	end = clock();
+	printf("Recording required %ld milliseconds\n", (end - start));
 
 	pthread_mutex_unlock(&mutex);
 }
@@ -79,9 +89,9 @@ void *output_info(void *argc)
 
 	fclose(file);
 
-	arthur_free(pointer[i * 3]);
-	arthur_free(pointer[i * 3 + 1]);
-	arthur_free(pointer[i * 3 + 2]);
+	custom_free(pointer[i * 3]);
+	custom_free(pointer[i * 3 + 1]);
+	custom_free(pointer[i * 3 + 2]);
     
 	pthread_mutex_unlock(&mutex);
 }
@@ -145,40 +155,62 @@ int test_result() {
 
 int main()
 {
+	int num_of_iterations = 0;
+	printf("Enter nubmer of iterations: ");
+	scanf("%d", &num_of_iterations);
+	printf("\n");
+
 	pthread_t threads[n];
-	int i = 0;
 	int number[n];
-	for (i = 0; i < n; i++) 
+	for (int i = 0; i < n; i++) 
     {
 		number[i] = i;
 	}
 
     pthread_mutex_init(&mutex, NULL);
 
-	for (i = 0; i < n; i++) 
-    {
-		if(i < n / 3) 
-        {
-			pthread_create(threads + i, NULL, make_blocks, number + i);
-		} 
-        else if (i < 2 * n / 3)
-        {
-			sleep(1 / 10);
-			pthread_create(threads + i, NULL, fill_blocks, number + i);
-		} 
-        else 
-        {
-			sleep(2 / 10);
-			pthread_create(threads + i, NULL, output_info, number + i);
+	
+
+	for (int k = 0; k < num_of_iterations; k++)
+	{
+		int flag_for_fill = 1;
+		int flag_for_free = 1;
+		for (int i = 0; i < n; i++) 
+		{
+			if(i < n / 3) 
+			{
+				pthread_create(threads + i, NULL, make_blocks, number + i);
+			} 
+			else if (i < 2 * n / 3)
+			{
+				if (flag_for_fill)
+				{
+					sleep(10 / 10);  // 1000 миллисекунд
+					flag_for_fill = 0;
+					printf("Blocks were created\n");
+				}
+				pthread_create(threads + i, NULL, fill_blocks, number + i);
+			} 
+			else 
+			{
+				if (flag_for_free)
+				{
+					sleep(10 / 10);  // 300 миллисекунд
+					flag_for_free = 0;
+					printf("Blocks were filled\n");
+				}
+				pthread_create(threads + i, NULL, output_info, number + i);
+			}
 		}
+
+		for (int i = 0; i < n; i++) 
+		{
+			pthread_join(threads[i], NULL);
+		}
+
+		test_result();
 	}
 
-	for (i = 0; i < n; i++) 
-    {
-		pthread_join(threads[i], NULL);
-	}
-
-	test_result();
     pthread_mutex_destroy(&mutex);
 
 	return 0;

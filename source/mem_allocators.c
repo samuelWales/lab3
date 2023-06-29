@@ -88,7 +88,7 @@ size_t align8(size_t s) {
     return ((s >> 3) + 1) << 3;
 }
 
-void *arthur_malloc(size_t size){
+void *custom_malloc(size_t size){
     s_block *block, last;
     size_t s = align8(size);
 
@@ -114,17 +114,16 @@ void *arthur_malloc(size_t size){
         }
         // first_block = block;  // строчка наверно не нужна
     }
-    printf("it was used custom malloc\n");
-
+    
     pthread_mutex_unlock(&alloc_mutex);
 
     return ((void *)block) + SIZE_BLOCK;
 }
 
-void *arthur_calloc(size_t number, size_t size){
+void *custom_calloc(size_t number, size_t size){
     size_t *new;
     size_t s8, i;
-    new = arthur_malloc(number * size);
+    new = custom_malloc(number * size);
     if(new){
         s8 = align8(number * size) >> 3;
 
@@ -175,7 +174,7 @@ s_block *fusion(s_block *block)
     return block;
 }
 
-void arthur_free(void *p)
+void custom_free(void *p)
 {
     s_block *block;
 
@@ -221,13 +220,13 @@ void copy_block(s_block *src, s_block *dst)
     }
 }
 
-void *arthur_realloc(void *p, size_t size){
+void *custom_realloc(void *p, size_t size){
     size_t s;
     s_block *block, *new_block;
 
     if (!p)
     {
-        return arthur_malloc(size);
+        return custom_malloc(size);
     }
 
     if (valid_address(p))
@@ -253,14 +252,14 @@ void *arthur_realloc(void *p, size_t size){
             }
             else
             {
-                void *newp = arthur_malloc(s);
+                void *newp = custom_malloc(s);
                 if(!newp)
                 {
                     return NULL;
                 }
                 new_block = (s_block *)(newp - SIZE_BLOCK);
                 copy_block(block, new_block);
-                arthur_free(p);
+                custom_free(p);
                 return newp;
             }
         }
