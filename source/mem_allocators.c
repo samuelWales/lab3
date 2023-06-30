@@ -67,7 +67,8 @@ s_block* extend_new_block(size_t size){
     return new_block;
 }
 
-void split_block(s_block *block, size_t size){  // size - размер данных, который хотим оставить для block
+void split_block(s_block *block, size_t size)  // size - размер блока данных, который хотим оставить для block
+{
     s_block *new_block;
 
     new_block = block + SIZE_BLOCK + size;
@@ -81,38 +82,47 @@ void split_block(s_block *block, size_t size){  // size - размер данн�
 }
 
 size_t align8(size_t s) {
-    if(s % 8 == 0){
+    if (s % 8 == 0){
        return s;
     }
  
     return ((s >> 3) + 1) << 3;
 }
 
-void *custom_malloc(size_t size){
+void *custom_malloc(size_t size)
+{
     s_block *block, last;
     size_t s = align8(size);
 
     pthread_mutex_lock(&alloc_mutex);
 
-    if(first_block){
+    if(first_block)
+    {
         block = find_block(s);
-        if(block){
-            if((block->size - s) >= (SIZE_BLOCK + 8)){
+        if(block)
+        {
+            if((block->size - s) >= (SIZE_BLOCK + 8))
+            {
                 split_block(block, s);
             }
             block->free = 0;
-        }else{
-           block = extend_new_block(s);
-            if(!block){
+        }
+        else
+        {
+            block = extend_new_block(s);
+            if(!block)
+            {
                 return NULL;
             } 
         }
-    }else{
+    }
+    else
+    {
         block = extend_new_block(s);
-        if(!block){
+        if(!block)
+        {
             return NULL;
         }
-        // first_block = block;  // строчка наверно не нужна
     }
     
     pthread_mutex_unlock(&alloc_mutex);
@@ -120,14 +130,17 @@ void *custom_malloc(size_t size){
     return ((void *)block) + SIZE_BLOCK;
 }
 
-void *custom_calloc(size_t number, size_t size){
+void *custom_calloc(size_t number, size_t size)
+{
     size_t *new;
     size_t s8, i;
     new = custom_malloc(number * size);
-    if(new){
+    if(new)
+    {
         s8 = align8(number * size) >> 3;
 
-        for(i = 0; i < s8; i++){
+        for(i = 0; i < s8; i++)
+        {
             new[i] = 0;
         }
     }
@@ -135,7 +148,8 @@ void *custom_calloc(size_t number, size_t size){
     return new;
 }
 
-int valid_address(void *p){  // если valid_flag равен 1, то указатель действительный
+int valid_address(void *p)  // если valid_flag равен 1, то указатель действительный
+{
     if (first_block)
     {
         if (p >= (void *)first_block && p < sbrk(0))
@@ -190,7 +204,7 @@ void custom_free(void *p)
         }
         while (block->next != block && block->next->free)
         {
-            block = fusion(block);  // скорее всего надо передать просто block, было block->next
+            block = fusion(block);  
         }
 
         if (block != first_block && block->next == first_block)
@@ -220,7 +234,8 @@ void copy_block(s_block *src, s_block *dst)
     }
 }
 
-void *custom_realloc(void *p, size_t size){
+void *custom_realloc(void *p, size_t size)
+{
     size_t s;
     s_block *block, *new_block;
 
@@ -233,9 +248,9 @@ void *custom_realloc(void *p, size_t size){
     {
         s = align8(size);
         block = (s_block *)(p - SIZE_BLOCK);
-        if (block->size >= s)
+        if (block->size >= s)  // когда необходимый размер меньше, чем текущий
         {
-            if(block->size - s >= (SIZE_BLOCK + 8))
+            if (block->size - s >= (SIZE_BLOCK + 8))
             {
                 split_block(block, s);
             }  
@@ -245,7 +260,7 @@ void *custom_realloc(void *p, size_t size){
             if (block->next != block && block->next->free && (block->size + SIZE_BLOCK + block->next->size) >= s)  // вероятно, что SIZE_BLOCK прибавлять не надо
             {  
                 block = fusion(block);
-                if(block->size - s >= (SIZE_BLOCK + 8))
+                if (block->size - s >= (SIZE_BLOCK + 8))
                 {
                     split_block(block, s);
                 }
@@ -253,7 +268,7 @@ void *custom_realloc(void *p, size_t size){
             else
             {
                 void *newp = custom_malloc(s);
-                if(!newp)
+                if (!newp)
                 {
                     return NULL;
                 }
